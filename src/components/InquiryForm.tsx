@@ -25,18 +25,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn, formatDate } from "@/lib/utils";
-import { CalendarIcon, User, Mail, Phone, MapPin, Edit3, ListChecks, Loader2 } from "lucide-react";
+import { CalendarIcon, User, Mail, Phone, MapPin, Edit3, ListChecks, Loader2, Building, Milestone, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { InquiryFormValues } from "@/types";
+import type { InquiryFormValues, AddressDetail } from "@/types";
 import { submitInquiryAction } from "@/actions/inquiryActions";
 import React from "react";
+
+const addressSchema = z.object({
+  street: z.string().min(3, { message: "Street address must be at least 3 characters." }),
+  city: z.string().min(2, { message: "City must be at least 2 characters." }),
+  state: z.string().min(2, { message: "State must be at least 2 characters." }),
+  zipCode: z.string().regex(/^\d{5}(?:-\d{4})?$/, { message: "Invalid ZIP code format." }),
+});
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email({ message: "Invalid email address." }),
   phone: z.string().min(10, { message: "Phone number must be at least 10 digits." }).regex(/^\+?[0-9\s\-()]*$/, "Invalid phone number format."),
-  currentAddress: z.string().min(5, { message: "Current address is too short." }),
-  destinationAddress: z.string().min(5, { message: "Destination address is too short." }),
+  currentAddress: addressSchema,
+  destinationAddress: addressSchema,
   movingDate: z.date({ required_error: "Moving date is required." }).min(new Date(new Date().setDate(new Date().getDate() - 1)), "Moving date cannot be in the past."),
   movingPreference: z.enum(["local", "longDistance"], { required_error: "Please select a moving preference." }),
   additionalNotes: z.string().optional(),
@@ -52,8 +59,18 @@ export default function InquiryForm() {
       name: "",
       email: "",
       phone: "",
-      currentAddress: "",
-      destinationAddress: "",
+      currentAddress: {
+        street: "",
+        city: "",
+        state: "",
+        zipCode: "",
+      },
+      destinationAddress: {
+        street: "",
+        city: "",
+        state: "",
+        zipCode: "",
+      },
       movingDate: undefined,
       movingPreference: undefined,
       additionalNotes: "",
@@ -135,32 +152,125 @@ export default function InquiryForm() {
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
-            name="currentAddress"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="flex items-center"><MapPin className="mr-2 h-4 w-4" />Current Address</FormLabel>
-                <FormControl>
-                  <Input placeholder="123 Main St, Anytown, USA" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="destinationAddress"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="flex items-center"><MapPin className="mr-2 h-4 w-4 text-accent" />Destination Address</FormLabel>
-                <FormControl>
-                  <Input placeholder="456 Oak Ave, Otherville, USA" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+
+          {/* Current Address Fields */}
+          <div className="space-y-4 p-4 border rounded-md">
+            <FormLabel className="flex items-center text-lg font-semibold"><MapPin className="mr-2 h-5 w-5" />Current Address</FormLabel>
+            <FormField
+              control={form.control}
+              name="currentAddress.street"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center"><Milestone className="mr-2 h-4 w-4" />Street Address</FormLabel>
+                  <FormControl>
+                    <Input placeholder="123 Main St" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="grid md:grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="currentAddress.city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center"><Building className="mr-2 h-4 w-4" />City</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Anytown" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="currentAddress.state"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center"><Globe className="mr-2 h-4 w-4" />State</FormLabel>
+                    <FormControl>
+                      <Input placeholder="CA" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="currentAddress.zipCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ZIP Code</FormLabel>
+                    <FormControl>
+                      <Input placeholder="90210" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          {/* Destination Address Fields */}
+           <div className="space-y-4 p-4 border border-accent rounded-md">
+            <FormLabel className="flex items-center text-lg font-semibold text-accent"><MapPin className="mr-2 h-5 w-5 text-accent" />Destination Address</FormLabel>
+            <FormField
+              control={form.control}
+              name="destinationAddress.street"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center"><Milestone className="mr-2 h-4 w-4" />Street Address</FormLabel>
+                  <FormControl>
+                    <Input placeholder="456 Oak Ave" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="grid md:grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="destinationAddress.city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center"><Building className="mr-2 h-4 w-4" />City</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Otherville" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="destinationAddress.state"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center"><Globe className="mr-2 h-4 w-4" />State</FormLabel>
+                    <FormControl>
+                      <Input placeholder="NY" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="destinationAddress.zipCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ZIP Code</FormLabel>
+                    <FormControl>
+                      <Input placeholder="10001" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
           <div className="grid md:grid-cols-2 gap-6">
             <FormField
               control={form.control}

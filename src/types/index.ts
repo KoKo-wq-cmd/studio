@@ -1,12 +1,19 @@
 import type { Timestamp } from "firebase/firestore";
 
+export interface AddressDetail {
+  street: string;
+  city: string;
+  state: string;
+  zipCode: string;
+}
+
 export interface Lead {
   id?: string; // Firestore document ID
   name: string;
   email: string;
   phone: string;
-  currentAddress: string;
-  destinationAddress: string;
+  currentAddress: string; // Stored as concatenated string in Firestore
+  destinationAddress: string; // Stored as concatenated string in Firestore
   movingDate: string; // ISO string date
   movingPreference: "local" | "longDistance";
   additionalNotes?: string;
@@ -24,6 +31,11 @@ export interface Lead {
 }
 
 // Schema for form validation
-export type InquiryFormValues = Omit<Lead, "id" | "createdAt" | "category" | "urgencyScore" | "categoryReason" | "leadScore" | "priority" | "scoreReasoning"> & {
+export type InquiryFormValues = Omit<
+  Lead,
+  "id" | "createdAt" | "category" | "urgencyScore" | "categoryReason" | "leadScore" | "priority" | "scoreReasoning" | "currentAddress" | "destinationAddress"
+> & {
   movingDate: Date; // Use Date object in form, convert to string for storage
+  currentAddress: AddressDetail;
+  destinationAddress: AddressDetail;
 };
