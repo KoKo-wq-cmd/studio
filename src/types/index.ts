@@ -12,12 +12,16 @@ export interface Lead {
   name: string;
   email: string;
   phone: string;
-  currentAddress: string; // Stored as concatenated string in Firestore
-  destinationAddress: string; // Stored as concatenated string in Firestore
+  currentAddress: AddressDetail;
+  destinationAddress: AddressDetail;
   movingDate: string; // ISO string date
   movingPreference: "local" | "longDistance";
-  additionalNotes?: string;
+  additionalNotes?: string | null;
   createdAt: Timestamp;
+  numberOfRooms?: number;
+  approximateBoxesCount?: string;
+  approximateFurnitureCount?: string;
+  specialInstructions?: string;
 
   // From categorizeInquiry AI flow
   category?: string; // e.g., 'localUrgent', 'longDistanceNonUrgent'
@@ -30,12 +34,9 @@ export interface Lead {
   scoreReasoning?: string;
 }
 
-// Schema for form validation
 export type InquiryFormValues = Omit<
   Lead,
-  "id" | "createdAt" | "category" | "urgencyScore" | "categoryReason" | "leadScore" | "priority" | "scoreReasoning" | "currentAddress" | "destinationAddress"
+  "id" | "createdAt" | "category" | "urgencyScore" | "categoryReason" | "leadScore" | "priority" | "scoreReasoning"
 > & {
   movingDate: Date; // Use Date object in form, convert to string for storage
-  currentAddress: AddressDetail;
-  destinationAddress: AddressDetail;
-};
+}

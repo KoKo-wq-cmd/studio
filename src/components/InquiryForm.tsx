@@ -1,361 +1,417 @@
+// src/components/ui/InquiryForm.tsx
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { CalendarIcon, CheckCircle, Loader2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { cn, formatDate } from "@/lib/utils";
-import { CalendarIcon, User, Mail, Phone, MapPin, Edit3, ListChecks, Loader2, Building, Milestone, Globe } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import type { InquiryFormValues, AddressDetail } from "@/types";
-import { submitInquiryAction } from "@/actions/inquiryActions";
-import React from "react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils"; // Adjusted import path based on structure
+import { Button } from "@/components/ui/button"; // Adjusted import path
+import { Calendar } from "@/components/ui/calendar"; // Adjusted import path
+import { Form, FormControl, FormField,FormItem, FormLabel, FormMessage } from "@/components/ui/form"; // Adjusted import path
+import { Input } from "@/components/ui/input"; // Adjusted import path
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"; // Adjusted import path
+import { submitInquiryAction } from "@/actions/inquiryActions"; // Adjusted import path
+import { toast } from "sonner";
+import { useState, useTransition } from "react";
+import { motion } from "framer-motion";
+import { useRouter } from 'next/navigation';
 
-const addressSchema = z.object({
-  street: z.string().min(3, { message: "Street address must be at least 3 characters." }),
-  city: z.string().min(2, { message: "City must be at least 2 characters." }),
-  state: z.string().min(2, { message: "State must be at least 2 characters." }),
-  zipCode: z.string().regex(/^\d{5}(?:-\d{4})?$/, { message: "Invalid ZIP code format." }),
+const zipRegex = /^\d{5}(?:-\d{4})?$/;
+const phoneRegex = /^\(?([0-9]{3})\)?[-.●]?([0-9]{3})[-.●]?([0-9]{4})$/;
+
+const inquiryFormSchema = z.object({
+  name: z.string().trim().min(2, "Name is required"),
+  email: z.string().email("Invalid email address"),
+  phone: z.string().regex(phoneRegex, "Invalid phone number"),
+  currentAddress: z.object({
+    street: z.string().trim().min(2),
+    city: z.string().trim().min(2),
+    state: z.string().trim().min(2),
+    zipCode: z.string().trim().regex(zipRegex, "Invalid ZIP"),
+  }),
+  destinationAddress: z.object({
+    street: z.string().trim().min(2),
+    city: z.string().trim().min(2),
+    state: z.string().trim().min(2),
+    zipCode: z.string().trim().regex(zipRegex, "Invalid ZIP"),
+  }),
+  movingDate: z.date({ required_error: "Please select a moving date" }),
+  numberOfRooms: z.string().trim().min(1, "Required"),
+  approximateBoxesCount: z.string().trim().min(1, "Required"),
+  approximateFurnitureCount: z.string().trim().min(1, "Required"),
+  specialInstructions: z.string().optional(),
+  movingPreference: z.enum(["local", "longDistance"]),
 });
 
-const formSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters." }),
-  email: z.string().email({ message: "Invalid email address." }),
-  phone: z.string().min(10, { message: "Phone number must be at least 10 digits." }).regex(/^\+?[0-9\s\-()]*$/, "Invalid phone number format."),
-  currentAddress: addressSchema,
-  destinationAddress: addressSchema,
-  movingDate: z.date({ required_error: "Moving date is required." }).min(new Date(new Date().setDate(new Date().getDate() - 1)), "Moving date cannot be in the past."),
-  movingPreference: z.enum(["local", "longDistance"], { required_error: "Please select a moving preference." }),
-  additionalNotes: z.string().optional(),
-});
+type InquiryFormValues = z.infer<typeof inquiryFormSchema>;
 
-export default function InquiryForm() {
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
+const defaultValues: Partial<InquiryFormValues> = {
+  name: "",
+  email: "",
+  phone: "",
+  currentAddress: {
+    street: "",
+    city: "",
+    state: "",
+    zipCode: "",
+  },
+  destinationAddress: {
+    street: "",
+    city: "",
+    state: "",
+    zipCode: "",
+  },
+  movingDate: undefined,
+  numberOfRooms: "",
+  approximateBoxesCount: "",
+  approximateFurnitureCount: "",
+  specialInstructions: "",
+  movingPreference: "local",
+};
+
+export function InquiryForm() {
+  const [isPending, startTransition] = useTransition();
+  const [isResetting, setIsResetting] = useState(false); // State to control form reset animation
+  const router = useRouter();
 
   const form = useForm<InquiryFormValues>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      phone: "",
-      currentAddress: {
-        street: "",
-        city: "",
-        state: "",
-        zipCode: "",
-      },
-      destinationAddress: {
-        street: "",
-        city: "",
-        state: "",
-        zipCode: "",
-      },
-      movingDate: undefined,
-      movingPreference: undefined,
-      additionalNotes: "",
-    },
+    resolver: zodResolver(inquiryFormSchema),
+    defaultValues,
+    mode: "onChange",
   });
 
   async function onSubmit(values: InquiryFormValues) {
-    setIsSubmitting(true);
-    try {
+    startTransition(async () => {
       const result = await submitInquiryAction(values);
       if (result.success) {
-        toast({
-          title: "Inquiry Submitted!",
-          description: "Thank you for your inquiry. We will get back to you soon.",
-        });
-        form.reset();
+        toast.success(
+          <div className="flex items-center gap-2">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <span>Inquiry submitted successfully!</span>
+          </div>,
+          {
+            duration: 3000,
+            description: "We've received your inquiry and will follow up soon.",
+          }
+        );
+        if (result.estimate !== undefined) {
+            router.push(`/estimate?estimate=${result.estimate}`);
+        } else {
+            // Trigger the reset animation if no estimate is available
+             setIsResetting(true);
+        }
+
       } else {
-        toast({
-          title: "Error",
-          description: result.error || "Could not submit your inquiry. Please try again.",
-          variant: "destructive",
+        toast.error("Submission failed", {
+          description: result.error || "An unexpected error occurred. Please try again.",
+          style: { background: "#fee2e2", color: "#dc2626" },
         });
       }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   }
 
+  // Handle form reset after animation completes
+  const handleResetAnimationEnd = () => {
+    if (isResetting) {
+      form.reset(defaultValues);
+      setIsResetting(false);
+      toast.info("Form has been reset for a new submission.");
+    }
+  };
+
   return (
-    <div className="max-w-2xl mx-auto p-6 md:p-8 bg-card rounded-xl shadow-2xl">
-      <h2 className="text-3xl font-bold mb-2 text-center text-primary">Plan Your Move</h2>
-      <p className="text-muted-foreground text-center mb-8">Fill out the form below and we'll get in touch!</p>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-          <div className="grid md:grid-cols-2 gap-6">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center"><User className="mr-2 h-4 w-4" />Full Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="John Doe" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4" />Email Address</FormLabel>
-                  <FormControl>
-                    <Input type="email" placeholder="john.doe@example.com" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
+    <div className="relative">
+      {/* Circular Progress Indicator */}
+      {isPending && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-50 z-10">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+        </div>
+      )}
+      <motion.form
+        initial={{ opacity: 1 }}
+        animate={{ opacity: isResetting ? 0 : 1 }}
+        transition={{ duration: 0.3 }}
+        onSubmit={form.handleSubmit(onSubmit)}
+        onAnimationComplete={handleResetAnimationEnd}
+        className="space-y-6"
+      >
+        <Form {...form}>
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Full Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="John Doe" {...field} disabled={isPending} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input placeholder="you@example.com" {...field} disabled={isPending} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
           <FormField
             control={form.control}
             name="phone"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="flex items-center"><Phone className="mr-2 h-4 w-4" />Phone Number</FormLabel>
+                <FormLabel>Phone Number</FormLabel>
                 <FormControl>
-                  <Input type="tel" placeholder="(123) 456-7890" {...field} />
+                  <Input placeholder="(555) 555-5555" {...field} disabled={isPending} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
 
-          {/* Current Address Fields */}
-          <div className="space-y-4 p-4 border rounded-md">
-            <FormLabel className="flex items-center text-lg font-semibold"><MapPin className="mr-2 h-5 w-5" />Current Address</FormLabel>
+          {/* CURRENT ADDRESS */}
+          <div className="grid grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="currentAddress.street"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center"><Milestone className="mr-2 h-4 w-4" />Street Address</FormLabel>
+                  <FormLabel>Current Street</FormLabel>
                   <FormControl>
-                    <Input placeholder="123 Main St" {...field} />
+                    <Input placeholder="123 Main St" {...field} disabled={isPending} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <div className="grid md:grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name="currentAddress.city"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><Building className="mr-2 h-4 w-4" />City</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Anytown" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="currentAddress.state"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><Globe className="mr-2 h-4 w-4" />State</FormLabel>
-                    <FormControl>
-                      <Input placeholder="CA" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="currentAddress.zipCode"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>ZIP Code</FormLabel>
-                    <FormControl>
-                      <Input placeholder="90210" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            <FormField
+              control={form.control}
+              name="currentAddress.city"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Current City</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Los Angeles" {...field} disabled={isPending} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
 
-          {/* Destination Address Fields */}
-           <div className="space-y-4 p-4 border border-accent rounded-md">
-            <FormLabel className="flex items-center text-lg font-semibold text-accent"><MapPin className="mr-2 h-5 w-5 text-accent" />Destination Address</FormLabel>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="currentAddress.state"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Current State</FormLabel>
+                  <FormControl>
+                    <Input placeholder="CA" {...field} disabled={isPending} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="currentAddress.zipCode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Current ZIP</FormLabel>
+                  <FormControl>
+                    <Input placeholder="90001" {...field} disabled={isPending} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          {/* DESTINATION ADDRESS */}
+          <div className="grid grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="destinationAddress.street"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center"><Milestone className="mr-2 h-4 w-4" />Street Address</FormLabel>
+                  <FormLabel>Destination Street</FormLabel>
                   <FormControl>
-                    <Input placeholder="456 Oak Ave" {...field} />
+                    <Input placeholder="456 Elm St" {...field} disabled={isPending} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <div className="grid md:grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name="destinationAddress.city"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><Building className="mr-2 h-4 w-4" />City</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Otherville" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="destinationAddress.state"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><Globe className="mr-2 h-4 w-4" />State</FormLabel>
-                    <FormControl>
-                      <Input placeholder="NY" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="destinationAddress.zipCode"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>ZIP Code</FormLabel>
-                    <FormControl>
-                      <Input placeholder="10001" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-6">
             <FormField
               control={form.control}
-              name="movingDate"
-              render={({ field }) => (
-                <FormItem className="flex flex-col">
-                  <FormLabel className="flex items-center"><CalendarIcon className="mr-2 h-4 w-4" />Estimated Moving Date</FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full pl-3 text-left font-normal",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          {field.value ? (
-                            formatDate(field.value, "PPP")
-                          ) : (
-                            <span>Pick a date</span>
-                          )}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="movingPreference"
+              name="destinationAddress.city"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center"><ListChecks className="mr-2 h-4 w-4" />Moving Preference</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select moving type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="local">Local Move</SelectItem>
-                      <SelectItem value="longDistance">Long Distance Move</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FormLabel>Destination City</FormLabel>
+                  <FormControl>
+                    <Input placeholder="New York" {...field} disabled={isPending} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="destinationAddress.state"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Destination State</FormLabel>
+                  <FormControl>
+                    <Input placeholder="NY" {...field} disabled={isPending} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="destinationAddress.zipCode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Destination ZIP</FormLabel>
+                  <FormControl>
+                    <Input placeholder="10001" {...field} disabled={isPending} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          {/* MOVING DATE */}
           <FormField
             control={form.control}
-            name="additionalNotes"
+            name="movingDate"
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>Moving Date</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant="outline"
+                        className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
+                        disabled={isPending}
+                      >
+                        {field.value ? format(field.value, "PPP") : <span>Select a date</span>}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={field.value} onSelect={field.onChange} />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="numberOfRooms"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="flex items-center"><Edit3 className="mr-2 h-4 w-4" />Additional Notes (Optional)</FormLabel>
+                <FormLabel>Number of Rooms</FormLabel>
                 <FormControl>
-                  <Textarea
-                    placeholder="Any special requirements, fragile items, etc."
-                    className="resize-none"
-                    {...field}
-                  />
+                  <Input placeholder="e.g. 3" {...field} disabled={isPending} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground text-lg py-6" disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
-            {isSubmitting ? "Submitting..." : "Get My Free Quote"}
+
+          <FormField
+            control={form.control}
+            name="approximateBoxesCount"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Approximate Boxes Count</FormLabel>
+                <FormControl>
+                  <Input placeholder="How many boxes total do you think you will have" {...field} disabled={isPending} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="approximateFurnitureCount"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Approximate Furniture Count</FormLabel>
+                <FormControl>
+                  <Input placeholder="How many furniture pieces total do you think you will have" {...field} disabled={isPending} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="specialInstructions"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Special Instructions</FormLabel>
+                <FormControl>
+                  <Input placeholder="Optional notes..." {...field} disabled={isPending} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="movingPreference"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Moving Preference</FormLabel>
+                <FormControl>
+                  <select {...field} className="w-full p-2 border rounded-md" disabled={isPending}>
+                    <option value="local">Local</option>
+                    <option value="longDistance">Long Distance</option>
+                  </select>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <Button disabled={isPending} type="submit" className="w-full">
+            {isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              "Submit Inquiry"
+            )}
           </Button>
-        </form>
-      </Form>
+        </Form>
+      </motion.form>
     </div>
   );
 }

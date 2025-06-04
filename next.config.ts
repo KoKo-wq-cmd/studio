@@ -1,7 +1,11 @@
-import type {NextConfig} from 'next';
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    allowedDevOrigins: [
+      "https://9000-firebase-studio-1748298724664.cluster-hf4yr35cmnbd4vhbxvfvc6cp5q.cloudworkstations.dev",
+    ],
+  },
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -18,6 +22,8 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Custom config, not a built-in Next.js option
+  allowedDevOrigins: ['local-origin.dev', '*.local-origin.dev'],
 };
 
 export default nextConfig;

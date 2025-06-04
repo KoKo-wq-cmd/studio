@@ -1,3 +1,4 @@
+// app/actions/submitInquiry.ts
 "use server";
 
 import { z } from "zod";
@@ -5,7 +6,8 @@ import { addLead, updateLeadWithAIResults } from "@/lib/firestore";
 import type { InquiryFormValues, Lead, AddressDetail } from "@/types";
 import { categorizeInquiry } from "@/ai/flows/inquiry-categorization";
 import { scoreLead } from "@/ai/flows/lead-scoring";
-import { getTimelineCategory, getUrgencyFromTimeline } from "@/lib/utils";
+import { getTimelineCategory, getUrgencyFromTimeline, calculateApproximateEstimate } from "@/lib/utils";
+import { Timestamp as FirestoreTimestamp, Timestamp } from "firebase/firestore"; // Explicit import for clarity
 
 const addressSchema = z.object({
   street: z.string().min(3),
@@ -22,58 +24,74 @@ const formSchema = z.object({
   destinationAddress: addressSchema,
   movingDate: z.date(),
   movingPreference: z.enum(["local", "longDistance"]),
-  additionalNotes: z.string().optional(),
-});
+  numberOfRooms: z.string().min(1), // Adjusted to match form
+  approximateBoxesCount: z.string().trim().min(1, "Required"),
+  approximateFurnitureCount: z.string().trim().min(1, "Required"),
+  specialInstructions: z.string().optional().nullable(), // Matches form field
+}).strict();
+
+// Define the type for the data passed to addLead, omitting only id and AI fields
+type LeadDataForFirestore = Omit<Lead, "id" | "category" | "urgencyScore" | "categoryReason" | "leadScore" | "priority" | "scoreReasoning">;
+
+export async function submitInquiryAction(
+  values: z.infer<typeof formSchema>
+): Promise<{
+  estimate: undefined; success: boolean; leadId?: string; error?: string; minEstimate?: number; maxEstimate?: number 
+}> { // Updated return type
+  const validatedFields = formSchema.safeParse(values);
+
+  if (!validatedFields.success) {
+    console.error(validatedFields.error.flatten().fieldErrors);
+    return { success: false, error: "Invalid form data. Please check the fields and try again." };
+  }
+
+  const data = validatedFields.data;
+  const movingDateISO = data.movingDate.toISOString(); // Convert Date to ISO string for Lead
+  const createdAt = FirestoreTimestamp.now(); // Set current timestamp for Firestore
+
+  try {
+    const leadDataForFirestore: LeadDataForFirestore = {
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      currentAddress: data.currentAddress,
+      destinationAddress: data.destinationAddress,
+      movingDate: movingDateISO,
+      movingPreference: data.movingPreference,
+      additionalNotes: data.specialInstructions || null, // Map specialInstructions to additionalNotes
+      createdAt: createdAt as Timestamp, // Include createdAt here
+      // Include the new fields in the data to be saved
+      approximateBoxesCount: data.approximateBoxesCount,
+      approximateFurnitureCount: data.approximateFurnitureCount,
+       numberOfRooms: parseInt(data.numberOfRooms) // Save numberOfRooms as number if needed
+    };
+
+    const leadId = await addLead(leadDataForFirestore);
+
+    // Calculate the approximate estimate
+    const estimateRange = await calculateApproximateEstimate({
+      numberOfRooms: data.numberOfRooms,
+      approximateBoxesCount: data.approximateBoxesCount,
+      approximateFurnitureCount: data.approximateFurnitureCount,
+      // Add other relevant fields here when the function is expanded
+    });
+
+    // Asynchronously run AI flows and update the lead
+    processLeadWithAI(leadId, data);
+
+    return { success: true, leadId, minEstimate: estimateRange.minEstimate, maxEstimate: estimateRange.maxEstimate }; // Return range
+  } catch (e: any) {
+    console.error(e);
+    return { success: false, error: e.message || "Failed to submit inquiry." };
+  }
+}
 
 function formatAddressToString(address: AddressDetail): string {
   return `${address.street}, ${address.city}, ${address.state} ${address.zipCode}`;
 }
 
-export async function submitInquiryAction(
-  values: InquiryFormValues
-): Promise<{ success: boolean; leadId?: string; error?: string }> {
-  const validatedFields = formSchema.safeParse(values);
-
-  if (!validatedFields.success) {
-    // For detailed error reporting, you might want to flatten the errors:
-    // console.error(validatedFields.error.flatten().fieldErrors);
-    return { success: false, error: "Invalid form data. Please check the fields and try again." };
-  }
-
-  const data = validatedFields.data;
-  const movingDateISO = data.movingDate.toISOString();
-
-  const currentAddressString = formatAddressToString(data.currentAddress);
-  const destinationAddressString = formatAddressToString(data.destinationAddress);
-
+async function processLeadWithAI(leadId: string, formData: z.infer<typeof formSchema>) {
   try {
-    const leadDataForFirestore = {
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      currentAddress: currentAddressString,
-      destinationAddress: destinationAddressString,
-      movingDate: movingDateISO,
-      movingPreference: data.movingPreference,
-      additionalNotes: data.additionalNotes,
-    };
-    
-    const leadId = await addLead(leadDataForFirestore);
-
-    // Asynchronously run AI flows and update the lead
-    // No need to wait for these to complete for the user response
-    processLeadWithAI(leadId, data); // Pass original validated data
-    
-    return { success: true, leadId };
-  } catch (e: any) {
-    return { success: false, error: e.message || "Failed to submit inquiry." };
-  }
-}
-
-// formData type here should be InquiryFormValues as it's the validated form data
-async function processLeadWithAI(leadId: string, formData: InquiryFormValues) {
-  try {
-    // Prepare inputs for AI flows
     const movingDateObj = new Date(formData.movingDate);
     const timeline = getTimelineCategory(movingDateObj);
     const urgency = getUrgencyFromTimeline(timeline);
@@ -86,7 +104,7 @@ async function processLeadWithAI(leadId: string, formData: InquiryFormValues) {
     try {
       const categorizationInput = {
         movingDistance: formData.movingPreference,
-        movingDate: movingDateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+        movingDate: movingDateObj.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
         contactInformationCompleteness: contactCompletenessScore,
       };
       const categorizationResult = await categorizeInquiry(categorizationInput);
@@ -99,7 +117,7 @@ async function processLeadWithAI(leadId: string, formData: InquiryFormValues) {
     } catch (aiError) {
       console.error(`Error categorizing inquiry for lead ${leadId}:`, aiError);
     }
-    
+
     // 2. Lead Scoring
     try {
       const scoringInput = {
@@ -107,14 +125,12 @@ async function processLeadWithAI(leadId: string, formData: InquiryFormValues) {
         timeline: timeline,
         contactInfoComplete: contactInfoComplete,
         urgency: urgency,
-        // Note: Address details are not directly used by scoreLead currently.
-        // If needed in the future, pass formData.currentAddress or formData.destinationAddress (the structured objects)
       };
       const scoringResult = await scoreLead(scoringInput);
       aiUpdates = {
         ...aiUpdates,
         leadScore: scoringResult.leadScore,
-        priority: scoringResult.priority as Lead['priority'],
+        priority: scoringResult.priority as Lead["priority"],
         scoreReasoning: scoringResult.reasoning,
       };
     } catch (aiError) {
@@ -125,7 +141,6 @@ async function processLeadWithAI(leadId: string, formData: InquiryFormValues) {
     if (Object.keys(aiUpdates).length > 0) {
       await updateLeadWithAIResults(leadId, aiUpdates);
     }
-
   } catch (error) {
     console.error(`Error processing AI flows for lead ${leadId}:`, error);
   }
