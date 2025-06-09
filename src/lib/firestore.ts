@@ -11,6 +11,8 @@ import {
   limit,
   startAfter,
   where,
+  FieldValue,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import type { Lead } from "@/types";
@@ -18,24 +20,21 @@ import type { Lead } from "@/types";
 const LEADS_COLLECTION = "leads";
 const PAGE_SIZE = 10; // Number of leads per page
 
-// Corrected type: Omit only id and AI-related fields, but include createdAt
+// Define the expected type for the initial lead data passed to addLead
+type AddLeadData = Omit<Lead, "id" | "priority" | "urgency"> & {
+  createdAt: FieldValue;
+  submitted: FieldValue;
+  category: "Residential" | "Commercial"; // Make sure category is required
+  minEstimate?: number;
+  maxEstimate?: number;
+};
+
 export async function addLead(
-  leadData: Omit<
-    Lead,
-    "id" |
-    "category" |
-    "urgencyScore" |
-    "categoryReason" |
-    "leadScore" |
-    "priority" |
-    "scoreReasoning"
-  > & { movingDate: string; approximateBoxesCount?: string; approximateFurnitureCount?: string; numberOfRooms?: number } // Include new fields and ensure movingDate is string
+  leadData: AddLeadData
 ): Promise<string> {
   try {
-    const docRef = await addDoc(collection(db, LEADS_COLLECTION), {
-      ...leadData,
-      createdAt: serverTimestamp(), // createdAt is now allowed by the type
-    });
+    console.log('Adding lead with data:', leadData); // Debug log
+    const docRef = await addDoc(collection(db, LEADS_COLLECTION), leadData);
     return docRef.id;
   } catch (error) {
     console.error("Error adding lead to Firestore: ", error);
@@ -48,8 +47,19 @@ export async function updateLeadWithAIResults(
   aiData: Partial<Lead>
 ): Promise<void> {
   try {
-    const leadRef = doc(db, LEADS_COLLECTION, leadId);
-    await updateDoc(leadRef, aiData);
+    // Remove any undefined values from aiData
+    const cleanData = Object.entries(aiData).reduce((acc, [key, value]) => {
+      if (value !== undefined) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {} as Record<string, any>);
+
+    // Only update if we have data to update
+    if (Object.keys(cleanData).length > 0) {
+      const leadRef = doc(db, LEADS_COLLECTION, leadId);
+      await updateDoc(leadRef, cleanData);
+    }
   } catch (error) {
     console.error("Error updating lead with AI results: ", error);
     // Not throwing error here to allow main process to continue if AI update fails
@@ -74,17 +84,35 @@ export async function getLeadsPage(cursor: any): Promise<{ leads: Lead[]; lastVi
     }
 
     const querySnapshot = await getDocs(leadsQuery);
-    const leads = querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      // Ensure movingDate is string and createdAt is properly typed if needed for display
-      movingDate: doc.data().movingDate as string,
-      createdAt: doc.data().createdAt as Timestamp,
-      // Include new fields, handling potential undefined
-      approximateBoxesCount: doc.data().approximateBoxesCount as string | undefined,
-      approximateFurnitureCount: doc.data().approximateFurnitureCount as string | undefined,
-      numberOfRooms: doc.data().numberOfRooms as number | undefined,
-    })) as Lead[];
+    const leads = querySnapshot.docs.map((doc) => {
+      const data = doc.data();
+      console.log('Raw Firestore data:', data); // Debug log
+      
+      const lead: Lead = {
+        id: doc.id,
+        name: data.name ?? "",
+        email: data.email ?? "",
+        phone: data.phone ?? "",
+        currentAddress: data.currentAddress ?? { street: "", city: "", state: "", zipCode: "" },
+        destinationAddress: data.destinationAddress ?? { street: "", city: "", state: "", zipCode: "" },
+        movingDate: data.movingDate ? new Date(data.movingDate).toISOString() : "",
+        movingPreference: data.movingPreference ?? "local",
+        additionalNotes: data.additionalNotes ?? null,
+        createdAt: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date(),
+        numberOfRooms: data.numberOfRooms as number | undefined,
+        approximateBoxesCount: data.approximateBoxesCount as string | undefined,
+        approximateFurnitureCount: data.approximateFurnitureCount as string | undefined,
+        specialInstructions: data.specialInstructions ?? data.additionalNotes ?? "",
+        urgency: data.urgency,
+        priority: data.priority ?? "None",
+        category: data.category as "Residential" | "Commercial", // Use type assertion
+        submitted: data.submitted ? (data.submitted as Timestamp).toDate() : new Date(),
+        minEstimate: data.minEstimate ? Number(data.minEstimate) : undefined,
+        maxEstimate: data.maxEstimate ? Number(data.maxEstimate) : undefined,
+      };
+      console.log('Processed lead:', lead); // Debug log
+      return lead;
+    });
 
     const lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];
 
@@ -94,3 +122,18 @@ export async function getLeadsPage(cursor: any): Promise<{ leads: Lead[]; lastVi
     throw new Error("Could not fetch leads.");
   }
 }
+
+// Delete all leads in the collection
+export async function deleteAllLeads(): Promise<void> {
+  try {
+    const leadsSnapshot = await getDocs(collection(db, LEADS_COLLECTION));
+    const deletePromises = leadsSnapshot.docs.map((docSnap) =>
+      deleteDoc(doc(db, LEADS_COLLECTION, docSnap.id))
+    );
+    await Promise.all(deletePromises);
+  } catch (error) {
+    console.error("Error deleting all leads: ", error);
+    throw new Error("Could not delete all leads.");
+  }
+}
+

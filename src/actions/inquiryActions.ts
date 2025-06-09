@@ -1,44 +1,32 @@
-// app/actions/submitInquiry.ts
-"use server";
-
 import { z } from "zod";
+import { inquiryFormSchema, AddressDetail } from "@/components/InquiryForm";
+import { db } from "@/lib/firebase";
+import { serverTimestamp, FieldValue } from "firebase/firestore";
 import { addLead, updateLeadWithAIResults } from "@/lib/firestore";
-import type { InquiryFormValues, Lead, AddressDetail } from "@/types";
-import { categorizeInquiry } from "@/ai/flows/inquiry-categorization";
-import { scoreLead } from "@/ai/flows/lead-scoring";
-import { getTimelineCategory, getUrgencyFromTimeline, calculateApproximateEstimate } from "@/lib/utils";
-import { Timestamp as FirestoreTimestamp, Timestamp } from "firebase/firestore"; // Explicit import for clarity
+import { calculateApproximateEstimate } from "@/lib/utils";
+import { getTimelineCategory } from "@/lib/utils";
+import type { Lead } from "@/types";
 
-const addressSchema = z.object({
-  street: z.string().min(3),
-  city: z.string().min(2),
-  state: z.string().min(2),
-  zipCode: z.string().regex(/^\d{5}(?:-\d{4})?$/),
-});
-
-const formSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  phone: z.string().min(10),
-  currentAddress: addressSchema,
-  destinationAddress: addressSchema,
-  movingDate: z.date(),
-  movingPreference: z.enum(["local", "longDistance"]),
-  numberOfRooms: z.string().min(1), // Adjusted to match form
-  approximateBoxesCount: z.string().trim().min(1, "Required"),
-  approximateFurnitureCount: z.string().trim().min(1, "Required"),
-  specialInstructions: z.string().optional().nullable(), // Matches form field
-}).strict();
-
-// Define the type for the data passed to addLead, omitting only id and AI fields
-type LeadDataForFirestore = Omit<Lead, "id" | "category" | "urgencyScore" | "categoryReason" | "leadScore" | "priority" | "scoreReasoning">;
+type InitialLeadData = Omit<Lead, "id" | "priority" | "category" | "submitted" | "urgency"> & {
+  createdAt: FieldValue;
+  submitted: FieldValue;
+  specialInstructions: string;
+  category: "Residential" | "Commercial";
+  urgency: string;
+  minEstimate?: number;
+  maxEstimate?: number;
+};
 
 export async function submitInquiryAction(
-  values: z.infer<typeof formSchema>
+  values: z.infer<typeof inquiryFormSchema>
 ): Promise<{
-  estimate: undefined; success: boolean; leadId?: string; error?: string; minEstimate?: number; maxEstimate?: number 
-}> { // Updated return type
-  const validatedFields = formSchema.safeParse(values);
+  success: boolean;
+  leadId?: string;
+  error?: string;
+  minEstimate?: number;
+  maxEstimate?: number;
+}> {
+  const validatedFields = inquiryFormSchema.safeParse(values);
 
   if (!validatedFields.success) {
     console.error(validatedFields.error.flatten().fieldErrors);
@@ -47,39 +35,48 @@ export async function submitInquiryAction(
 
   const data = validatedFields.data;
   const movingDateISO = data.movingDate.toISOString(); // Convert Date to ISO string for Lead
-  const createdAt = FirestoreTimestamp.now(); // Set current timestamp for Firestore
 
   try {
-    const leadDataForFirestore: LeadDataForFirestore = {
+    // Calculate the estimate first
+    const estimateRange = await calculateApproximateEstimate({
+      numberOfRooms: data.numberOfRooms,
+      approximateBoxesCount: data.approximateBoxesCount,
+      approximateFurnitureCount: data.approximateFurnitureCount,
+    });
+
+    // Then include it in initialLeadData
+    const initialLeadData: InitialLeadData = {
       name: data.name,
       email: data.email,
       phone: data.phone,
       currentAddress: data.currentAddress,
       destinationAddress: data.destinationAddress,
       movingDate: movingDateISO,
-      movingPreference: data.movingPreference,
-      additionalNotes: data.specialInstructions || null, // Map specialInstructions to additionalNotes
-      createdAt: createdAt as Timestamp, // Include createdAt here
-      // Include the new fields in the data to be saved
+      numberOfRooms: parseInt(data.numberOfRooms),
       approximateBoxesCount: data.approximateBoxesCount,
       approximateFurnitureCount: data.approximateFurnitureCount,
-       numberOfRooms: parseInt(data.numberOfRooms) // Save numberOfRooms as number if needed
+      movingPreference: data.movingPreference,
+      additionalNotes: data.additionalNotes ?? null,
+      specialInstructions: data.additionalNotes ?? "",
+      minEstimate: estimateRange.minEstimate,
+      maxEstimate: estimateRange.maxEstimate,
+      category: data.category,
+      createdAt: serverTimestamp(),
+      submitted: serverTimestamp(),
+      urgency: getTimelineCategory(new Date(movingDateISO)),
     };
 
-    const leadId = await addLead(leadDataForFirestore);
-
-    // Calculate the approximate estimate
-    const estimateRange = await calculateApproximateEstimate({
-      numberOfRooms: data.numberOfRooms,
-      approximateBoxesCount: data.approximateBoxesCount,
-      approximateFurnitureCount: data.approximateFurnitureCount,
-      // Add other relevant fields here when the function is expanded
-    });
+    const leadId = await addLead(initialLeadData as any); // Use 'as any' temporarily if addLead signature is strict
 
     // Asynchronously run AI flows and update the lead
     processLeadWithAI(leadId, data);
 
-    return { success: true, leadId, minEstimate: estimateRange.minEstimate, maxEstimate: estimateRange.maxEstimate }; // Return range
+    return { 
+      success: true, 
+      leadId, 
+      minEstimate: estimateRange.minEstimate, 
+      maxEstimate: estimateRange.maxEstimate 
+    };
   } catch (e: any) {
     console.error(e);
     return { success: false, error: e.message || "Failed to submit inquiry." };
@@ -90,58 +87,43 @@ function formatAddressToString(address: AddressDetail): string {
   return `${address.street}, ${address.city}, ${address.state} ${address.zipCode}`;
 }
 
-async function processLeadWithAI(leadId: string, formData: z.infer<typeof formSchema>) {
+async function processLeadWithAI(leadId: string, data: z.infer<typeof inquiryFormSchema>) {
   try {
-    const movingDateObj = new Date(formData.movingDate);
-    const timeline = getTimelineCategory(movingDateObj);
-    const urgency = getUrgencyFromTimeline(timeline);
-    const contactInfoComplete = !!(formData.name && formData.email && formData.phone);
-    const contactCompletenessScore = [formData.name, formData.email, formData.phone].filter(Boolean).length / 3;
+      // 1. Get Timeline Category
+      const timelineCategory = getTimelineCategory(data.movingDate);
 
-    let aiUpdates: Partial<Lead> = {};
+      // 2. Map Timeline Category to Urgency (Priority) Field
+      let urgency: "Urgent" | "Urgent Moderate" | "Urgent Low" | null | undefined;
+      let priority: string; // Assume priority is a string in Lead type
 
-    // 1. Inquiry Categorization
-    try {
-      const categorizationInput = {
-        movingDistance: formData.movingPreference,
-        movingDate: movingDateObj.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
-        contactInformationCompleteness: contactCompletenessScore,
-      };
-      const categorizationResult = await categorizeInquiry(categorizationInput);
-      aiUpdates = {
-        ...aiUpdates,
-        category: categorizationResult.category,
-        urgencyScore: categorizationResult.urgencyScore,
-        categoryReason: categorizationResult.reason,
-      };
-    } catch (aiError) {
-      console.error(`Error categorizing inquiry for lead ${leadId}:`, aiError);
-    }
+      switch (timelineCategory) {
+          case "Urgent":
+              urgency = "Urgent";
+              priority = "High"; // Map urgency to a priority string value
+              break;
+          case "Urgent Moderate":
+              urgency = "Urgent Moderate";
+              priority = "Medium"; // Map urgency to a priority string value
+              break;
+          case "Urgent Low":
+              urgency = "Urgent Low";
+              priority = "Low"; // Map urgency to a priority string value
+              break;
+          default:
+              urgency = null; // Or handle the default case as needed
+              priority = "None"; // Default priority
+              break;
+      }
 
-    // 2. Lead Scoring
-    try {
-      const scoringInput = {
-        movingDistance: formData.movingPreference === "longDistance" ? "long distance" : "local",
-        timeline: timeline,
-        contactInfoComplete: contactInfoComplete,
-        urgency: urgency,
-      };
-      const scoringResult = await scoreLead(scoringInput);
-      aiUpdates = {
-        ...aiUpdates,
-        leadScore: scoringResult.leadScore,
-        priority: scoringResult.priority as Lead["priority"],
-        scoreReasoning: scoringResult.reasoning,
-      };
-    } catch (aiError) {
-      console.error(`Error scoring lead for lead ${leadId}:`, aiError);
-    }
+      // 3. Potentially determine Category based on data (if not done elsewhere)
+      // This part is speculative as category logic is not in the provided snippet
+      let category: "Residential" | "Commercial" | undefined = undefined; // Assign a valid value or undefined
 
-    // Update Firestore with AI results
-    if (Object.keys(aiUpdates).length > 0) {
-      await updateLeadWithAIResults(leadId, aiUpdates);
-    }
+      // 4. Update Lead with Urgency, Priority, and Category Values
+      // Ensure updateLeadWithAIResults can handle partial updates and FieldValues
+      await updateLeadWithAIResults(leadId, { urgency, priority, category });
+
   } catch (error) {
-    console.error(`Error processing AI flows for lead ${leadId}:`, error);
+      console.error("Error processing lead with AI:", error);
   }
 }

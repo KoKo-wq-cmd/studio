@@ -1,174 +1,238 @@
-import type { Lead } from "@/types";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { formatDate } from "@/lib/utils";
-import { TrendingUp, Tag, Star } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import { format } from 'date-fns';
+import React from "react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Lead } from "@/types";
+import { ArrowUpDown } from "lucide-react";
 
 interface LeadsTableProps {
   leads: Lead[];
 }
 
-function getPriorityBadgeVariant(priority?: string): "default" | "destructive" | "secondary" | "outline" {
-  switch (priority?.toLowerCase()) {
-    case "high":
-      return "destructive";
-    case "medium":
-      return "default";
-    case "low":
-      return "secondary";
-    default:
-      return "outline";
-  }
-}
+export function LeadsTable({ leads }: LeadsTableProps) {
+  // Add this debug log
+  React.useEffect(() => {
+    console.log('Leads data received:', leads);
+  }, [leads]);
 
-export default function LeadsTable({ leads }: LeadsTableProps) {
+  const columns: ColumnDef<Lead>[] = [
+    {
+      accessorKey: "name",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Name
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+    },
+    {
+      accessorKey: "email",
+      header: "Email",
+    },
+    {
+      accessorKey: "phone",
+      header: "Phone",
+    },
+    {
+      accessorKey: "currentAddress.street",
+      header: "Current Street",
+    },
+    {
+      accessorKey: "currentAddress.city",
+      header: "Current City",
+    },
+    {
+      accessorKey: "currentAddress.state",
+      header: "Current State",
+    },
+    {
+      accessorKey: "currentAddress.zipCode",
+      header: "Current ZipCode",
+    },
+    {
+      accessorKey: "destinationAddress.street",
+      header: "Destination Street",
+    },
+    {
+      accessorKey: "destinationAddress.city",
+      header: "Destination City",
+    },
+    {
+      accessorKey: "destinationAddress.state",
+      header: "Destination State",
+    },
+    {
+      accessorKey: "destinationAddress.zipCode",
+      header: "Destination ZipCode",
+    },
+    {
+      accessorKey: "movingDate",
+      header: "Move Date",
+      cell: ({ row }) => {
+        const dateString = row.getValue("movingDate") as string;
+        try {
+          const date = new Date(dateString);
+          return format(date, 'MM/dd/yyyy');
+        } catch (error) {
+          return "";
+        }
+      },
+    },
+    {
+      accessorKey: "numberOfRooms",
+      header: "Number of Rooms",
+    },
+    {
+      accessorKey: "approximateBoxesCount",
+      header: "Approximate Boxes Count",
+    },
+    {
+      accessorKey: "approximateFurnitureCount",
+      header: "Approximate Furniture Count",
+    },
+    {
+      accessorKey: "specialInstructions",
+      header: "Special Instructions",
+    },
+    {
+      accessorKey: "movingPreference",
+      header: "Move Type",
+    },
+    {
+      accessorKey: "category",
+      header: "Category",
+      cell: ({ row }) => {
+        const data = row.original;
+        // Debug what we're getting
+        console.log('Category data:', {
+          category: data.category,
+          type: typeof data.category
+        });
+        
+        // Make sure we show the value even if it's "Residential"
+        return (
+          <span className="font-medium capitalize">
+            {data.category || "N/A"}
+          </span>
+        );
+      }
+    },
+    {
+      accessorKey: "createdAt",
+      header: "Created At",
+      cell: ({ row }) => {
+        const dateString = row.getValue("createdAt") as string;
+        try {
+          const date = new Date(dateString);
+          return format(date, 'MM/dd/yyyy');
+        } catch (error) {
+          return "";
+        }
+      },
+    },
+    {
+      accessorKey: "urgency",
+      header: "Urgency",
+      cell: ({ row }) => {
+        const urgency = row.getValue("urgency");
+        return urgency || "Not Set";
+      }
+    },
+    {
+      accessorKey: "estimatedCost",
+      header: "Estimated Cost",
+      cell: ({ row }) => {
+        const data = row.original;
+        const min = data.minEstimate;
+        const max = data.maxEstimate;
+        
+        // Debug the estimate values
+        console.log('Cost data:', {
+          min,
+          max,
+          minType: typeof min,
+          maxType: typeof max
+        });
+        
+        // Check for actual numbers, not just truthy values
+        if (typeof min === 'number' && typeof max === 'number') {
+          return (
+            <span className="font-medium">
+              ${min.toLocaleString()} - ${max.toLocaleString()}
+            </span>
+          );
+        }
+        
+        return <span className="text-muted-foreground">N/A</span>;
+      },
+    },
+  ];
+
+  const table = useReactTable({
+    data: leads,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
   return (
-    <TooltipProvider>
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[180px]">Name</TableHead>
-              <TableHead>Email & Phone</TableHead>
-              <TableHead>Current Address</TableHead>
-              <TableHead>Destination Address</TableHead>
-              <TableHead>Moving Date</TableHead>
-              <TableHead>Number of Rooms</TableHead>
-              <TableHead>Approximate Boxes Count</TableHead>
-              <TableHead>Approximate Furniture Count</TableHead>
-              <TableHead>Special Instructions</TableHead>
-              <TableHead>Preference</TableHead>
-              <TableHead>
-                <div className="flex items-center justify-center">
-                  <Star className="mr-1 h-4 w-4 text-yellow-500" /> Score
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex items-center justify-center">
-                  <TrendingUp className="mr-1 h-4 w-4 text-blue-500" /> Priority
-                </div>
-              </TableHead>
-              <TableHead>
-                <div className="flex items-center justify-center">
-                  <Tag className="mr-1 h-4 w-4 text-green-500" /> Category
-                </div>
-              </TableHead>
-              <TableHead className="text-right">Submitted</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {leads.map((lead) => (
-              <TableRow key={lead.id}>
-                <TableCell className="font-medium">{lead.name}</TableCell>
-                <TableCell>
-                  <div>{lead.email}</div>
-                  <div className="text-xs text-muted-foreground">{lead.phone}</div>
-                </TableCell>
-                <TableCell>
-                  <div>
-                    <span className="font-semibold">Street:</span> {lead.currentAddress?.street}<br />
-                    <span className="font-semibold">City:</span> {lead.currentAddress?.city}<br />
-                    <span className="font-semibold">State:</span> {lead.currentAddress?.state}<br />
-                    <span className="font-semibold">ZIP:</span> {lead.currentAddress?.zipCode}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div>
-                    <span className="font-semibold">Street:</span> {lead.destinationAddress?.street}<br />
-                    <span className="font-semibold">City:</span> {lead.destinationAddress?.city}<br />
-                    <span className="font-semibold">State:</span> {lead.destinationAddress?.state}<br />
-                    <span className="font-semibold">ZIP:</span> {lead.destinationAddress?.zipCode}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {lead.movingDate
-                    ? formatDate(
-                        new Date(lead.movingDate)
-                      , "MMM d, yyyy")
-                    : ""}
-                </TableCell>
-                <TableCell>{lead.numberOfRooms}</TableCell>
-                <TableCell>{lead.approximateBoxesCount || <span className="text-muted-foreground">N/A</span>}</TableCell>
-                <TableCell>{lead.approximateFurnitureCount || <span className="text-muted-foreground">N/A</span>}</TableCell>
-                <TableCell>{lead.specialInstructions || <span className="text-muted-foreground">N/A</span>}</TableCell>
-                <TableCell>
-                  <Badge variant={lead.movingPreference === "local" ? "secondary" : "outline"}>
-                    {lead.movingPreference === "local" ? "Local" : "Long Distance"}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  {lead.leadScore !== undefined ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge variant="outline" className="cursor-help">
-                          <Star className="mr-1 h-3 w-3 text-yellow-500" />
-                          {lead.leadScore}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="max-w-xs text-sm">{lead.scoreReasoning || "No reasoning provided."}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground">N/A</Badge>
-                  )}
-                </TableCell>
-                <TableCell className="text-center">
-                  {lead.priority ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge variant={getPriorityBadgeVariant(lead.priority)} className="cursor-help capitalize">
-                          {lead.priority}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="max-w-xs text-sm">{lead.scoreReasoning || "Based on lead score."}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground">N/A</Badge>
-                  )}
-                </TableCell>
-                <TableCell className="text-center">
-                  {lead.category ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge variant="outline" className="cursor-help">
-                          {lead.category.replace(/([A-Z])/g, ' $1').trim()}
-                          {lead.urgencyScore !== undefined && ` (${(lead.urgencyScore * 100).toFixed(0)}%)`}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="max-w-xs text-sm">{lead.categoryReason || "Categorized by AI."}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground">N/A</Badge>
-                  )}
-                </TableCell>
-                <TableCell className="text-right">
-                  {lead.createdAt
-                    ? formatDate(lead.createdAt.toDate(), "MMM d, yyyy HH:mm")
-                    :  ""}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+    <div className="w-full">
+      <div className="flex items-center py-4">
+        <Input
+          placeholder="Filter leads..."
+          value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+          onChange={(event) =>
+            table.getColumn("name")?.setFilterValue(event.target.value)
+          }
+          className="max-w-sm"
+        />
       </div>
-    </TooltipProvider>
+      <div className="rounded-md border">
+        <table className="w-full text-sm">
+          <thead>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  return (
+                    <th key={header.id} className="px-4 py-2 text-left">
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row) => (
+              <tr key={row.id} className="border-b last:border-0">
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id} className="px-4 py-2">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
+
+export default LeadsTable;
