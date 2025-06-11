@@ -1,9 +1,19 @@
 "use client";
 
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 function EstimatePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <EstimateContent />
+    </Suspense>
+  );
+}
+
+// Move all the existing page content to this component
+function EstimateContent() {
   const searchParams = useSearchParams();
   const minEstimate = searchParams.get('minEstimate');
   const maxEstimate = searchParams.get('maxEstimate');

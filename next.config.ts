@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  output: 'export', // Enable static exports for Firebase hosting
   experimental: {
     allowedDevOrigins: [
       "https://9000-firebase-studio-1748298724664.cluster-hf4yr35cmnbd4vhbxvfvc6cp5q.cloudworkstations.dev",
@@ -13,6 +14,7 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
+    unoptimized: true, // Required for static export
     remotePatterns: [
       {
         protocol: 'https',

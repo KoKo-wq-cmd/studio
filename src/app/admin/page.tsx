@@ -6,11 +6,19 @@ import { useSearchParams } from 'next/navigation';
 import { Lead } from '@/types';
 import { getLeadsPage, deleteAllLeads } from "@/lib/firestore";
 import LeadsTable from "@/components/admin/LeadsTable";
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Button } from "@/components/ui/button";
 import { convertLeadsToCSV } from "@/lib/utils";
 
 function AdminDashboardPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <AdminContent />
+    </Suspense>
+  );
+}
+
+function AdminContent() {
   return (
     <Card>
       <CardHeader>
