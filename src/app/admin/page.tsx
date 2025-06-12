@@ -77,7 +77,7 @@ function LeadsTableWrapper() {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    
+
     link.setAttribute('href', url);
     link.setAttribute('download', `leads-export-${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
@@ -96,14 +96,16 @@ function LeadsTableWrapper() {
         <Button variant="default" onClick={handleExport}>
           Export Leads
         </Button>
-        <Button variant="destructive" onClick={handleDeleteAll} disabled={deleting}>
-          {deleting ? "Deleting..." : "Delete All Leads"}
-        </Button>
+
         {lastVisible && (
           <Button asChild>
             <a href={`/admin?cursor=${lastVisible}`}>Load More</a>
           </Button>
         )}
+
+        <Button variant="destructive" onClick={handleDeleteAll} disabled={deleting}>
+          {deleting ? "Deleting..." : "Delete All Leads"}
+        </Button>
       </div>
       <LeadsTable leads={leadsData} />
     </div>

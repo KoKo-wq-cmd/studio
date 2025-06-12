@@ -47,7 +47,15 @@ export default function RootLayout({
       >
         <div className="relative flex min-h-screen flex-col">
           <SiteHeader />
-          <main className="flex-1 container mx-auto px-4 py-8 bg-white">
+          <main
+            className="min-h-screen w-full flex items-center justify-center relative overflow-hidden"
+            style={{
+              backgroundImage: "url('/images/inquiry.webp')",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+            }}
+          >
             {children}
           </main>
           <SiteFooter />
@@ -57,3 +65,15 @@ export default function RootLayout({
     </html>
   );
 }
+
+/* REMOVE these lines: */
+/* html, body {
+  padding: 0;
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow-x: hidden;
+} */
