@@ -19,6 +19,7 @@ import { motion } from "framer-motion";
 import { useRouter } from 'next/navigation';
 import zipcodes from 'zipcodes';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import Link from "next/link";
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
     const toRad = (value: number) => value * Math.PI / 180;
@@ -490,6 +491,41 @@ export function InquiryForm() {
                             </FormItem>
                     )}
             />
+
+            {/* --- DISCLOSURE AND CHECKBOX GO HERE --- */}
+            <div className="text-xs text-gray-600 mb-2">
+  By clicking <b>"Submit Inquiry"</b>, you agree to our{" "}
+  <Link
+    href="/disclosure"
+    className="underline text-blue-600 hover:text-blue-800"
+    target="_blank"
+    rel="noopener noreferrer"
+  >
+    Moving Quote Form Data Usage Disclosure
+  </Link>
+  {" "}and consent to your information being shared with moving companies to provide quotes. You may be contacted by these companies via phone, email, or other means.
+</div>
+<div className="flex items-center mb-4">
+  <input
+    id="data-usage-agree"
+    type="checkbox"
+    required
+    className="mr-2"
+  />
+  <label htmlFor="data-usage-agree" className="text-sm">
+    I agree to the{" "}
+    <Link
+      href="/disclosure"
+      className="underline text-blue-600 hover:text-blue-800"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Moving Quote Form Data Usage Disclosure
+    </Link>
+    {" "}and consent to being contacted by moving companies for quotes.
+  </label>
+</div>
+{/* --- END DISCLOSURE AND CHECKBOX --- */}
 
             <Button disabled={isPending} type="submit" className="w-full">
                     {isPending ? (

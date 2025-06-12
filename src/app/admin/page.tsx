@@ -1,37 +1,45 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { Suspense } from 'react';
 import { FileText } from "lucide-react";
+import LeadsTable from "@/components/admin/LeadsTable";
 import { useSearchParams } from 'next/navigation';
 import { Lead } from '@/types';
 import { getLeadsPage, deleteAllLeads } from "@/lib/firestore";
-import LeadsTable from "@/components/admin/LeadsTable";
-import React, { Suspense } from 'react';
 import { Button } from "@/components/ui/button";
-import { convertLeadsToCSV } from "@/lib/utils";
 
-function AdminDashboardPage() {
+export default function AdminDashboardPage() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <AdminContent />
-    </Suspense>
+    <div className="container mx-auto p-6">
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
+        <div className="flex items-center mb-6">
+          <FileText className="mr-3 h-6 w-6 text-blue-600" />
+          <div>
+            <h2 className="text-2xl font-bold">Admin Dashboard</h2>
+            <p className="text-gray-500">Manage leads and AI insights.</p>
+          </div>
+        </div>
+        <Suspense fallback={<div>Loading leads...</div>}>
+          <LeadsTableWrapper />
+        </Suspense>
+      </div>
+    </div>
   );
 }
 
 function AdminContent() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center">
-          <FileText className="mr-2 h-4 w-4" />
-          Admin Dashboard
-        </CardTitle>
-        <CardDescription>Manage leads and AI insights.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <LeadsTableWrapper />
-      </CardContent>
-    </Card>
+    <div>
+      <div className="flex items-center mb-4">
+        <FileText className="mr-2 h-4 w-4" />
+        <div>
+          <h2 className="text-lg font-semibold">Admin Dashboard</h2>
+          <p className="text-sm text-muted-foreground">Manage leads and AI insights.</p>
+        </div>
+      </div>
+      <LeadsTableWrapper />
+    </div>
   );
 }
 
@@ -83,19 +91,12 @@ function LeadsTableWrapper() {
   }
 
   return (
-    <div>
-      <div className="flex justify-end mb-4 gap-2">
-        <Button
-          variant="default"
-          onClick={handleExport}
-        >
+    <div className="space-y-4">
+      <div className="flex justify-end gap-2">
+        <Button variant="default" onClick={handleExport}>
           Export Leads
         </Button>
-        <Button
-          variant="destructive"
-          onClick={handleDeleteAll}
-          disabled={deleting}
-        >
+        <Button variant="destructive" onClick={handleDeleteAll} disabled={deleting}>
           {deleting ? "Deleting..." : "Delete All Leads"}
         </Button>
         {lastVisible && (
@@ -109,4 +110,82 @@ function LeadsTableWrapper() {
   );
 }
 
-export default AdminDashboardPage;
+function convertLeadsToCSV(leads: Lead[]): string {
+  // Define CSV headers - match exactly with Admin table columns
+  const headers = [
+    'Name',
+    'Email',
+    'Phone',
+    'Current Street',
+    'Current City',
+    'Current State',
+    'Current ZipCode',
+    'Destination Street',
+    'Destination City',
+    'Destination State',
+    'Destination ZipCode',
+    'Move Date',
+    'Number of Rooms',
+    'Approximate Boxes Count',
+    'Approximate Furniture Count',
+    'Special Instructions',
+    'Move Type',
+    'Category',
+    'Urgency',  // Added Urgency header
+    'Created At'
+  ].join(',');
+
+  // Convert each lead to CSV row - match column order with headers
+  const rows = leads.map(lead => {
+    // Calculate urgency if not present
+    const urgency = lead.urgency || getTimelineCategory(new Date(lead.movingDate));
+
+    return [
+      lead.name,
+      lead.email,
+      lead.phone,
+      `"${lead.currentAddress.street}"`,
+      lead.currentAddress.city,
+      lead.currentAddress.state,
+      lead.currentAddress.zipCode,
+      `"${lead.destinationAddress.street}"`,
+      lead.destinationAddress.city,
+      lead.destinationAddress.state,
+      lead.destinationAddress.zipCode,
+      new Date(lead.movingDate).toLocaleDateString(),
+      lead.numberOfRooms !== undefined ? lead.numberOfRooms.toString() : 'N/A',
+      lead.approximateBoxesCount || 'N/A',
+      lead.approximateFurnitureCount || 'N/A',
+      `"${lead.specialInstructions || ''}"`,
+      lead.movingPreference,
+      lead.category || 'Residential',
+      urgency,  // Added Urgency value
+      new Date(lead.createdAt).toLocaleDateString()
+    ].map(value => {
+      // Properly escape values containing commas or quotes
+      if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    }).join(',');
+  });
+
+  return [headers, ...rows].join('\n');
+}
+
+function getTimelineCategory(date: Date): "Urgent" | "Urgent Moderate" | "Urgent Low" | null {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return null;
+
+  const now = new Date();
+  const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 7) {
+    return "Urgent";
+  } else if (diffDays <= 21) {
+    return "Urgent Moderate";
+  } else if (diffDays > 21) {
+    return "Urgent Low";
+  }
+  return null;
+}
+
