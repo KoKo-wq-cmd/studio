@@ -16,7 +16,29 @@ export default function LandingPage() {
       {/* Overlay for readability */}
       <div className="absolute inset-0 bg-black/40 z-0" />
 
-      <div className="relative z-10 bg-blue-100/80 backdrop-blur-md rounded-xl shadow-xl border border-blue-200 p-6 max-w-md w-full text-center flex flex-col items-center">
+      <div className="relative z-10 bg-blue-100/80 backdrop-blur-md rounded-xl shadow-xl border border-blue-200 p-6 max-w-md w-full flex flex-col">
+        <a className="flex items-center space-x-2 self-start ml-20 mt-2" href="/">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="lucide lucide-package2 h-6 w-6 text-primary"
+          >
+            <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z"></path>
+            <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9"></path>
+            <path d="M12 3v6"></path>
+          </svg>
+          <span className="font-bold sm:inline-block text-lg">
+            Move Info Central
+          </span>
+        </a>
+
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-3 text-blue-800 drop-shadow-sm">
           Welcome to{" "}
           <span className="text-blue-600">Move Info Central</span>
@@ -32,26 +54,6 @@ export default function LandingPage() {
         >
           Get My Moving Quote
         </Link>
-
-        {/* New SVG Icon Section */}
-        <div className="mt-4">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="lucide lucide-package2 h-6 w-6 text-primary ml-4"
-          >
-            <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z"></path>
-            <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9"></path>
-            <path d="M12 3v6"></path>
-          </svg>
-        </div>
       </div>
 
       {/* Footer */}
